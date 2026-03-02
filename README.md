@@ -49,3 +49,4 @@ The Cpk Analyzer follows standard automotive quality benchmarks:
    •	1.00 ≤ Cpk < 1.33: Process is marginally capable.
    •	Cpk ≥ 1.33: Process is capable (Standard requirement).
 
+
