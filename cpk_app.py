@@ -13,7 +13,7 @@ from reportlab.platypus import Table, TableStyle
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Process Capability, Cpk Analyzer", layout="wide")
 
-st.title("🛡️ Process Capability Study (Numbered Entry)")
+st.title("🛡️ Process Capability Study")
 
 # --- SIDEBAR: DATA ENTRY ---
 with st.sidebar:
@@ -132,3 +132,4 @@ if num_points >= 2:
 
     except ValueError:
         st.error("Please enter numbers only (one per line).")
+
