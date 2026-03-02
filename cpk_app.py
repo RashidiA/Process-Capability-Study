@@ -8,149 +8,127 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
-from reportlab.platypus import Table, TableStyle, SimpleDocTemplate, Paragraph, Spacer, Image
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Table, TableStyle
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Process Capability, Cpk Analyzer", layout="wide")
 
-st.title("🛡️ Process Capability Study with Data Logging")
+st.title("🛡️ Process Capability Study (Numbered Entry)")
 
-# --- SIDEBAR INPUTS ---
+# --- SIDEBAR: DATA ENTRY ---
 with st.sidebar:
     st.header("📋 Study Parameters")
-    title = st.text_input("Project Title", "Tailgate to Side Body Gap")
+    title = st.text_input("Project Title", "Tailgate to Side Body X70 Gap")
     u_spec = st.number_input("Upper Spec Limit (USL)", value=2.8)
     l_spec = st.number_input("Lower Spec Limit (LSL)", value=2.2)
     
-    st.subheader("📊 Measurement Data")
-    # Default data provided from user reference
-    default_data = "2.8\n2.8\n2.6\n2.8\n2.5\n2.6\n2.6\n2.8\n2.6\n2.7\n2.7\n2.6\n2.8\n2.6\n2.7\n2.7\n2.6"
-    data_input = st.text_area("Data Points (One per line)", height=300, value=default_data)
+    st.divider()
+    st.subheader("📊 Step 1: Key-in Data")
+    st.caption("Enter one value per line. The list below will track your Point #.")
+    
+    # The Text Area for Input
+    data_input = st.text_area("Actual Data Input", height=250, 
+                             placeholder="Example:\n2.8\n2.7\n2.6...",
+                             help="Type your measurements here. Max 60 points.")
 
-# --- CALCULATIONS ---
-if data_input:
+    # Number Tracker Logic
+    raw_points = [x.strip() for x in data_input.split('\n') if x.strip()]
+    num_points = len(raw_points)
+    
+    # Live Counter
+    if num_points > 0:
+        st.info(f"✅ Currently tracked: **{num_points} / 60** data points.")
+        # Show a small preview table to help user track
+        tracker_df = pd.DataFrame({
+            "Point #": [f"#{i+1}" for i in range(num_points)],
+            "Value": raw_points
+        })
+        st.dataframe(tracker_df.tail(5), hide_index=True, use_container_width=True)
+    else:
+        st.warning("Waiting for data...")
+
+# --- CALCULATIONS & REPORTING ---
+if num_points >= 2:
     try:
-        data = [float(x) for x in data_input.split('\n') if x.strip()][:60]
-        df = pd.DataFrame(data, columns=['Value'])
-        
-        # Core Statistics
+        data = [float(x) for x in raw_points][:60]
         mean = np.mean(data)
         std_dev = np.std(data, ddof=1)
+        cpk = min((u_spec - mean)/(3*std_dev), (mean - l_spec)/(3*std_dev))
         
-        # Capability Indices
-        cpu = (u_spec - mean) / (3 * std_dev)
-        cpl = (mean - l_spec) / (3 * std_dev)
-        cpk = min(cpu, cpl)
-        
-        # Yield and PPM Calculation
-        prob_above_usl = 1 - stats.norm.cdf(u_spec, mean, std_dev)
-        prob_below_lsl = stats.norm.cdf(l_spec, mean, std_dev)
-        total_defect_prob = prob_above_usl + prob_below_lsl
-        
-        yield_perc = (1 - total_defect_prob) * 100
-        ppm_total = total_defect_prob * 1_000_000
+        # PPM and Yield
+        p_above = 1 - stats.norm.cdf(u_spec, mean, std_dev)
+        p_below = stats.norm.cdf(l_spec, mean, std_dev)
+        yield_perc = (1 - (p_above + p_below)) * 100
+        ppm = (p_above + p_below) * 1_000_000
 
-        # --- DASHBOARD UI ---
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Mean", f"{mean:.3f}")
-        m2.metric("Cpk", f"{cpk:.2f}")
-        m3.metric("Yield", f"{yield_perc:.2f}%")
-        m4.metric("Total PPM", f"{int(ppm_total):,}")
+        # UI Dashboard
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Mean", f"{mean:.3f}")
+        c2.metric("Cpk", f"{cpk:.2f}")
+        c3.metric("Yield", f"{yield_perc:.2f}%")
+        c4.metric("Total PPM", f"{int(ppm):,}")
 
-        # --- PLOTTING ---
-        fig1, ax1 = plt.subplots(figsize=(6, 3.5))
+        # Graphs
+        fig1, ax1 = plt.subplots(figsize=(6, 3))
         ax1.plot(data, marker='o', color='#004b87', markersize=4)
         ax1.axhline(u_spec, color='red', linestyle='--', label='USL')
         ax1.axhline(l_spec, color='red', linestyle='--', label='LSL')
-        ax1.axhline(mean, color='green', linestyle='-', alpha=0.5)
         ax1.set_title("Individuals Control Chart")
         
-        fig2, ax2 = plt.subplots(figsize=(6, 3.5))
-        ax2.hist(data, bins=10, density=True, alpha=0.6, color='skyblue', edgecolor='white')
-        x = np.linspace(min(data)-0.2, max(data)+0.2, 100)
-        ax2.plot(x, stats.norm.pdf(x, mean, std_dev), color='magenta', lw=2)
-        ax2.axvline(u_spec, color='red', label='USL')
-        ax2.axvline(l_spec, color='red', label='LSL')
+        fig2, ax2 = plt.subplots(figsize=(6, 3))
+        ax2.hist(data, bins=10, density=True, alpha=0.6, color='skyblue')
+        x_axis = np.linspace(min(data)-0.1, max(data)+0.1, 100)
+        ax2.plot(x_axis, stats.norm.pdf(x_axis, mean, std_dev), color='magenta')
         ax2.set_title("Capability Histogram")
 
         st.columns(2)[0].pyplot(fig1)
         st.columns(2)[1].pyplot(fig2)
 
-        # --- PDF GENERATION WITH DATA LOG ---
-        def create_pdf(f1, f2, measurements):
+        # PDF Logic
+        def create_pdf():
             buf = BytesIO()
             p = canvas.Canvas(buf, pagesize=A4)
-            w, h = A4
-
-            # Page 1: Summary and Graphs
-            p.setFont("Helvetica-Bold", 16)
-            p.drawString(50, h - 50, "PROCESS CAPABILITY & PPM REPORT")
-            p.setFont("Helvetica", 11)
-            p.drawString(50, h - 80, f"Project: {title}")
-            p.drawString(50, h - 95, f"Specs: LSL {l_spec} | USL {u_spec}  | Mean: {mean:.3f}")
-            p.drawString(50, h - 110, f"Cpk: {cpk:.2f} | Estimated Yield: {yield_perc:.2f}%")
-
-            def fig_to_img(fig):
-                img_buf = BytesIO()
-                fig.savefig(img_buf, format='png', bbox_inches='tight', dpi=150)
-                img_buf.seek(0)
-                return ImageReader(img_buf)
-
-            p.drawImage(fig_to_img(f1), 50, h - 320, width=500, height=200)
-            p.drawImage(fig_to_img(f2), 50, h - 540, width=500, height=200)
-
-            # PPM Table
-            p.setFont("Helvetica-Bold", 12)
-            p.drawString(50, h - 570, "Quality Performance (PPM Analysis)")
-            ppm_data = [
-                ["Metric", "Percentage", "PPM"],
-                ["Above USL", f"{prob_above_usl*100:.4f}%", f"{int(prob_above_usl*1_000_000):,}"],
-                ["Below LSL", f"{prob_below_lsl*100:.4f}%", f"{int(prob_below_lsl*1_000_000):,}"],
-                ["Total Defect", f"{total_defect_prob*100:.4f}%", f"{int(ppm_total):,}"]
-            ]
-            ppm_tbl = Table(ppm_data, colWidths=[150, 150, 150])
-            ppm_tbl.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.cadetblue),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ]))
-            ppm_tbl.wrapOn(p, 50, h - 680)
-            ppm_tbl.drawOn(p, 50, h - 680)
-
-            # Page 2: Full Data Log
-            p.showPage()
-            p.setFont("Helvetica-Bold", 14)
-            p.drawString(50, h - 50, "FULL DATA MEASUREMENT LOG")
+            h = A4[1]
             
-            # Prepare data in grid format (5 columns)
-            log_data = [["Point #", "Value", "Point #", "Value", "Point #", "Value"]]
-            for i in range(0, len(measurements), 3):
+            p.setFont("Helvetica-Bold", 14)
+            p.drawString(50, h-50, "CPK AUDIT REPORT WITH MEASUREMENT LOG")
+            p.setFont("Helvetica", 10)
+            p.drawString(50, h-70, f"Project: {title} | Total Points: {num_points}")
+            
+            # Helper to draw matplotlib to PDF
+            def add_chart(fig, y_pos):
+                img_buf = BytesIO()
+                fig.savefig(img_buf, format='png', bbox_inches='tight')
+                p.drawImage(ImageReader(img_buf), 50, y_pos, width=450, height=200)
+
+            add_chart(fig1, h-300)
+            add_chart(fig2, h-520)
+
+            # Data Table with Numbers for Report
+            p.drawString(50, h-550, "Point Log:")
+            log_data = [["#", "Value", "#", "Value", "#", "Value", "#", "Value"]]
+            # Split into 4 columns for compact look
+            for i in range(0, num_points, 4):
                 row = []
-                for j in range(3):
-                    if i + j < len(measurements):
-                        row.extend([f"#{i+j+1}", f"{measurements[i+j]:.3f}"])
-                    else:
-                        row.extend(["", ""])
+                for j in range(4):
+                    idx = i + j
+                    row.extend([f"#{idx+1}", f"{data[idx]:.3f}"] if idx < num_points else ["", ""])
                 log_data.append(row)
 
-            log_tbl = Table(log_data, colWidths=[60, 90, 60, 90, 60, 90])
-            log_tbl.setStyle(TableStyle([
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
+            t = Table(log_data, colWidths=[30, 60]*4)
+            t.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('FONTSIZE', (0,0), (-1,-1), 8),
+                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey)
             ]))
-            log_tbl.wrapOn(p, 50, h - 750)
-            log_tbl.drawOn(p, 50, 100) # Start from bottom up
-
+            t.wrapOn(p, 50, 50)
+            t.drawOn(p, 50, 50)
+            
+            p.showPage()
             p.save()
             return buf.getvalue()
 
-        st.divider()
-        pdf_data = create_pdf(fig1, fig2, data)
-        st.download_button("📥 Download Comprehensive Report", pdf_data, "Cpk_Full_Audit_Report.pdf", "application/pdf")
+        st.download_button("📥 Download PDF Report", create_pdf(), "Full_Report.pdf")
 
-    except Exception as e:
-        st.error(f"Computation Error: {e}")
+    except ValueError:
+        st.error("Please enter numbers only (one per line).")
