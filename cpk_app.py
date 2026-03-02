@@ -8,7 +8,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Body Shop Cpk Analyzer", layout="wide")
+st.set_page_config(page_title="Process Capability Cpk Analyzer", layout="wide")
 
 @st.cache_resource
 def load_reader():
@@ -22,7 +22,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ Process Capability Study (Body Shop)")
+st.title("🛡️ Process Capability Study")
 
 # --- SIDEBAR INPUTS ---
 with st.sidebar:
@@ -105,7 +105,7 @@ if data_input:
         def create_pdf():
             buf = BytesIO()
             p = canvas.Canvas(buf, pagesize=A4)
-            p.drawString(100, 800, f"BODY SHOP PROCESS CAPABILITY REPORT")
+            p.drawString(100, 800, f"PROCESS CAPABILITY REPORT")
             p.drawString(100, 780, f"Project: {title}")
             p.drawString(100, 760, f"USL: {u_spec} | LSL: {l_spec}")
             p.drawString(100, 740, f"Samples (n): {n}")
@@ -118,4 +118,5 @@ if data_input:
         st.download_button("📥 Download PDF Report", create_pdf(), "Cpk_Report.pdf", "application/pdf")
 
     except Exception as e:
+
         st.error(f"Please check data format: {e}")
